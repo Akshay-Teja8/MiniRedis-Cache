@@ -1,0 +1,6 @@
+LRU Cache Benchmark Results
+
+
+PUT Ops/sec        : 1,097,481.61
+GET Ops/sec        : 1,090,157.08
+Concurrent Ops/sec : 262,773.54
