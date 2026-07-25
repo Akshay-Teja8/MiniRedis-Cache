@@ -8,6 +8,8 @@ Run with:
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import FileResponse
+import os
 from pydantic import BaseModel
 
 from lru_cache import LRUcache
@@ -43,6 +45,11 @@ def root():
         "documentation": "/docs",
     }
 
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "frontend", "index.html"))
 @app.get("/health")
 def health():
     return {
@@ -57,6 +64,14 @@ def stats():
     return {
     "cache": cache.get_stats()
 }
+
+@app.get("/cache", tags=["System"])
+def list_keys():
+    with cache.lock:
+        keys = [k for k, entry in cache.cache.items() if not entry.is_expired()]
+  # OrderedDict: index 0 = least recently used, -1 = most recently used
+    return {"keys": keys, "size": len(keys), "capacity": cache.capacity}
+
 
 @app.get("/cache/{key}", response_model=GetResponse)
 def get_key(key: str):

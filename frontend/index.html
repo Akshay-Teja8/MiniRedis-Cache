@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MiniRedis — Live Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14171C;
+    --panel:#1B1F25;
+    --line:#262B33;
+    --text:#ECE9E4;
+    --text-dim:#868C97;
+    --amber:#E8A33D;
+    --rust:#C4573B;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:'IBM Plex Sans',sans-serif; -webkit-font-smoothing:antialiased;}
+  code,.mono{font-family:'IBM Plex Mono',monospace;}
+
+  a{color:inherit;}
+
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 24px 60px;}
+
+  /* ---------- header ---------- */
+  header{display:flex;align-items:baseline;justify-content:space-between;
+    padding-bottom:18px;border-bottom:1px solid var(--line);margin-bottom:28px;flex-wrap:wrap;gap:12px;}
+  header h1{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:19px;
+    letter-spacing:0.01em;margin:0;}
+  header h1 span{color:var(--text-dim);font-weight:400;}
+  .health{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;
+    font-size:12px;color:var(--text-dim);}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--text-dim);flex:none;
+    transition:background .25s;}
+  .dot.up{background:#7BAE7F;box-shadow:0 0 6px #7BAE7F80;}
+  .dot.down{background:var(--rust);box-shadow:0 0 6px var(--rust)80;}
+
+  .base-url{display:flex;align-items:center;gap:8px;}
+  .base-url input{background:transparent;border:1px solid var(--line);color:var(--text-dim);
+    font-family:'IBM Plex Mono',monospace;font-size:12px;padding:5px 8px;border-radius:4px;width:200px;}
+  .base-url input:focus{outline:none;border-color:var(--text-dim);color:var(--text);}
+
+  /* ---------- layout ---------- */
+  .grid{display:grid;grid-template-columns:1fr 300px;gap:20px;}
+  @media (max-width:860px){.grid{grid-template-columns:1fr;}}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;}
+  .panel + .panel{margin-top:20px;}
+  .panel-title{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.08em;
+    text-transform:uppercase;color:var(--text-dim);margin:0 0 16px;}
+
+  /* ---------- recency rail (signature element) ---------- */
+  .rail-labels{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;
+    font-size:10px;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px;}
+  .rail-labels .mru{color:var(--amber);}
+  .rail-labels .lru{color:var(--rust);}
+
+  .rail{position:relative;min-height:96px;background:#12151A;border:1px solid var(--line);
+    border-radius:8px;padding:14px;overflow-x:auto;overflow-y:hidden;}
+  .rail-track{display:flex;gap:10px;align-items:flex-start;min-height:64px;}
+  .rail-empty{color:var(--text-dim);font-family:'IBM Plex Mono',monospace;font-size:12px;
+    padding:20px 4px;}
+
+  .tile{flex:none;min-width:78px;max-width:140px;background:#20242B;border:1px solid var(--line);
+    border-radius:7px;padding:9px 11px;transition:transform .35s ease, opacity .35s ease,
+    border-color .3s, box-shadow .3s;}
+  .tile .k{font-family:'IBM Plex Mono',monospace;font-size:12.5px;font-weight:500;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tile .pos{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);
+    margin-top:3px;}
+  .tile.mru{border-color:var(--amber);box-shadow:0 0 0 1px #E8A33D33, 0 0 14px #E8A33D22;}
+  .tile.mru .pos{color:var(--amber);}
+  .tile.lru{border-color:var(--rust);animation:pulse 1.8s ease-in-out infinite;}
+  .tile.lru .pos{color:var(--rust);}
+  .tile.evicting{opacity:0;transform:translateX(24px) scale(.85);}
+  .tile.entering{animation:enter .3s ease;}
+
+  @keyframes pulse{
+    0%,100%{box-shadow:0 0 0 1px #C4573B22;}
+    50%{box-shadow:0 0 0 1px #C4573B55, 0 0 12px #C4573B33;}
+  }
+  @keyframes enter{
+    from{opacity:0;transform:translateY(-6px) scale(.9);}
+    to{opacity:1;transform:none;}
+  }
+
+  /* ---------- command bar ---------- */
+  .cmd{display:grid;grid-template-columns:1fr 1fr 90px auto auto auto;gap:8px;margin-top:16px;}
+  @media (max-width:700px){.cmd{grid-template-columns:1fr 1fr;}}
+  .cmd input{background:#12151A;border:1px solid var(--line);color:var(--text);
+    font-family:'IBM Plex Mono',monospace;font-size:13px;padding:9px 10px;border-radius:6px;width:100%;}
+  .cmd input::placeholder{color:var(--text-dim);}
+  .cmd input:focus{outline:none;border-color:var(--text-dim);}
+
+  button{cursor:pointer;border:none;border-radius:6px;font-family:'IBM Plex Sans',sans-serif;
+    font-size:13px;font-weight:500;padding:9px 14px;transition:filter .15s, transform .1s;}
+  button:active{transform:scale(.97);}
+  .btn-put{background:var(--amber);color:#1A1408;}
+  .btn-get{background:#2B3038;color:var(--text);border:1px solid var(--line);}
+  .btn-del{background:transparent;color:var(--rust);border:1px solid #C4573B55;}
+  .btn-clear{background:transparent;color:var(--text-dim);border:1px solid var(--line);
+    font-size:11px;padding:6px 10px;}
+  button:hover{filter:brightness(1.1);}
+
+  /* ---------- stats ---------- */
+  .stat-row{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;
+    border-bottom:1px solid var(--line);}
+  .stat-row:last-child{border-bottom:none;}
+  .stat-label{font-size:12.5px;color:var(--text-dim);}
+  .stat-value{font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;}
+  .stat-value.hit{color:var(--amber);}
+
+  .hitrate-bar{height:5px;background:var(--line);border-radius:3px;margin-top:14px;overflow:hidden;}
+  .hitrate-fill{height:100%;background:var(--amber);border-radius:3px;transition:width .4s ease;width:0%;}
+  .hitrate-caption{display:flex;justify-content:space-between;margin-top:6px;
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim);}
+
+  /* ---------- log ---------- */
+  .log{margin-top:16px;max-height:150px;overflow-y:auto;font-family:'IBM Plex Mono',monospace;
+    font-size:12px;line-height:1.9;}
+  .log div{color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .log .put{color:var(--amber);}
+  .log .evict, .log .err{color:var(--rust);}
+  .log .get{color:#8FBF9A;}
+  .log::-webkit-scrollbar{width:6px;}
+  .log::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>MiniRedis <span>/ live console</span></h1>
+    <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+      <div class="base-url">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);">API</span>
+        <input id="baseUrl" class="mono" value="" placeholder="same origin"/>
+      </div>
+      <div class="health"><span class="dot" id="healthDot"></span><span id="healthText">connecting…</span></div>
+    </div>
+  </header>
+
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <p class="panel-title">Recency Rail — live OrderedDict state</p>
+        <div class="rail-labels">
+          <span class="mru">← most recently used</span>
+          <span class="lru">next to evict →</span>
+        </div>
+        <div class="rail"><div class="rail-track" id="railTrack">
+          <div class="rail-empty">cache is empty — put a key below</div>
+        </div></div>
+
+        <div class="cmd">
+          <input id="inKey" placeholder="key" class="mono"/>
+          <input id="inVal" placeholder="value" class="mono"/>
+          <input id="inTtl" placeholder="ttl (s)" class="mono"/>
+          <button class="btn-put" id="btnPut">PUT</button>
+          <button class="btn-get" id="btnGet">GET</button>
+          <button class="btn-del" id="btnDel">DEL</button>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+          <button class="btn-clear" id="btnClear">clear entire cache</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <p class="panel-title">Event Log</p>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="panel">
+        <p class="panel-title">Stats</p>
+        <div class="stat-row"><span class="stat-label">size / capacity</span><span class="stat-value" id="statSize">–</span></div>
+        <div class="stat-row"><span class="stat-label">hits</span><span class="stat-value hit" id="statHits">–</span></div>
+        <div class="stat-row"><span class="stat-label">misses</span><span class="stat-value" id="statMisses">–</span></div>
+        <div class="stat-row"><span class="stat-label">evictions</span><span class="stat-value" id="statEvictions">–</span></div>
+        <div class="stat-row"><span class="stat-label">expired</span><span class="stat-value" id="statExpired">–</span></div>
+        <div class="hitrate-bar"><div class="hitrate-fill" id="hitrateFill"></div></div>
+        <div class="hitrate-caption"><span>hit rate</span><span id="hitrateLabel">0%</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let base = localStorage.getItem('mr_base') || '';
+$('baseUrl').value = base;
+$('baseUrl').addEventListener('change', e => {
+  base = e.target.value.replace(/\/$/, '');
+  localStorage.setItem('mr_base', base);
+});
+
+function url(path){ return (base || '') + path; }
+
+function logLine(text, cls){
+  const el = document.createElement('div');
+  el.className = cls || '';
+  const t = new Date().toLocaleTimeString();
+  el.textContent = `[${t}] ${text}`;
+  const log = $('log');
+  log.prepend(el);
+  while(log.children.length > 60) log.removeChild(log.lastChild);
+}
+
+async function api(path, opts){
+  const res = await fetch(url(path), opts);
+  let body = null;
+  try { body = await res.json(); } catch(e) {}
+  return { ok: res.ok, status: res.status, body };
+}
+
+async function checkHealth(){
+  try{
+    const r = await api('/health');
+    $('healthDot').className = 'dot ' + (r.ok ? 'up' : 'down');
+    $('healthText').textContent = r.ok ? 'connected' : `unreachable (${r.status})`;
+  }catch(e){
+    $('healthDot').className = 'dot down';
+    $('healthText').textContent = 'unreachable';
+  }
+}
+
+async function refreshStats(){
+  const r = await api('/stats');
+  if(!r.ok || !r.body) return;
+  const s = r.body.cache;
+  $('statSize').textContent = `${s.current_size}`;
+  $('statHits').textContent = s.hits;
+  $('statMisses').textContent = s.misses;
+  $('statEvictions').textContent = s.evictions;
+  $('statExpired').textContent = s.expired_evictions;
+  const total = s.hits + s.misses;
+  const rate = total ? Math.round((s.hits/total)*100) : 0;
+  $('hitrateFill').style.width = rate + '%';
+  $('hitrateLabel').textContent = rate + '%';
+}
+
+let prevKeys = [];
+async function refreshRail(){
+  const r = await api('/cache');
+  if(!r.ok || !r.body) return;
+  const keys = r.body.keys || []; // index 0 = LRU, last = MRU
+  const track = $('railTrack');
+
+  if(keys.length === 0){
+    track.innerHTML = '<div class="rail-empty">cache is empty — put a key below</div>';
+    prevKeys = [];
+    return;
+  }
+
+  // render MRU first (left) -> LRU last (right)
+  const ordered = [...keys].reverse();
+  track.innerHTML = '';
+  ordered.forEach((k, i) => {
+    const tile = document.createElement('div');
+    const isMru = i === 0;
+    const isLru = i === ordered.length - 1 && ordered.length > 1;
+    tile.className = 'tile' + (isMru ? ' mru' : '') + (isLru ? ' lru' : '');
+    if(!prevKeys.includes(k)) tile.classList.add('entering');
+    tile.innerHTML = `<div class="k">${escapeHtml(k)}</div><div class="pos">${isMru ? 'MRU' : isLru ? 'evict next' : '#'+(i+1)}</div>`;
+    track.appendChild(tile);
+  });
+  prevKeys = keys;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function tick(){
+  await checkHealth();
+  await refreshStats();
+  await refreshRail();
+}
+
+$('btnPut').addEventListener('click', async () => {
+  const key = $('inKey').value.trim();
+  const val = $('inVal').value;
+  const ttlRaw = $('inTtl').value.trim();
+  if(!key){ logLine('PUT requires a key', 'err'); return; }
+  const payload = { value: val };
+  if(ttlRaw) payload.ttl = parseFloat(ttlRaw);
+  const r = await api('/cache/' + encodeURIComponent(key), {
+    method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+  });
+  if(r.ok) logLine(`PUT ${key} = ${val}${ttlRaw ? ' (ttl '+ttlRaw+'s)' : ''}`, 'put');
+  else logLine(`PUT ${key} failed (${r.status})`, 'err');
+  tick();
+});
+
+$('btnGet').addEventListener('click', async () => {
+  const key = $('inKey').value.trim();
+  if(!key){ logLine('GET requires a key', 'err'); return; }
+  const r = await api('/cache/' + encodeURIComponent(key));
+  if(r.ok) logLine(`GET ${key} -> ${JSON.stringify(r.body.value)}`, 'get');
+  else logLine(`GET ${key} -> miss / expired`, 'err');
+  tick();
+});
+
+$('btnDel').addEventListener('click', async () => {
+  const key = $('inKey').value.trim();
+  if(!key){ logLine('DEL requires a key', 'err'); return; }
+  const r = await api('/cache/' + encodeURIComponent(key), { method:'DELETE' });
+  if(r.ok) logLine(`DEL ${key}`, 'evict');
+  else logLine(`DEL ${key} -> not found`, 'err');
+  tick();
+});
+
+$('btnClear').addEventListener('click', async () => {
+  const r = await api('/cache', { method:'DELETE' });
+  if(r.ok) logLine('cache cleared', 'evict');
+  tick();
+});
+
+tick();
+setInterval(tick, 1500);
+</script>
+</body>
+</html>
