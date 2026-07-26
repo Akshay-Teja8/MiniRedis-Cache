@@ -71,6 +71,10 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .tile .pos{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);
     margin-top:3px;}
+  .tile .ttl{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);
+    margin-top:5px;padding-top:5px;border-top:1px solid var(--line);}
+  .tile .ttl.expiring{color:var(--rust);}
+  .tile .ttl.none{opacity:.5;}
   .tile.mru{border-color:var(--amber);box-shadow:0 0 0 1px #E8A33D33, 0 0 14px #E8A33D22;}
   .tile.mru .pos{color:var(--amber);}
   .tile.lru{border-color:var(--rust);animation:pulse 1.8s ease-in-out infinite;}
@@ -244,31 +248,75 @@ async function refreshStats(){
 }
 
 let prevKeys = [];
+// ttlClock[key] = { remaining: seconds-as-of-last-fetch, fetchedAt: Date.now() at fetch time }
+let ttlClock = {};
+
 async function refreshRail(){
   const r = await api('/cache');
   if(!r.ok || !r.body) return;
-  const keys = r.body.keys || []; // index 0 = LRU, last = MRU
+  const items = r.body.keys || []; // [{key, remaining_ttl}], index 0 = LRU, last = MRU
   const track = $('railTrack');
 
-  if(keys.length === 0){
+  if(items.length === 0){
     track.innerHTML = '<div class="rail-empty">cache is empty — put a key below</div>';
     prevKeys = [];
+    ttlClock = {};
     return;
   }
 
+  const currentKeys = items.map(it => it.key);
+
   // render MRU first (left) -> LRU last (right)
-  const ordered = [...keys].reverse();
+  const ordered = [...items].reverse();
   track.innerHTML = '';
-  ordered.forEach((k, i) => {
+  ttlClock = {};
+  ordered.forEach((item, i) => {
+    const { key, remaining_ttl } = item;
     const tile = document.createElement('div');
     const isMru = i === 0;
     const isLru = i === ordered.length - 1 && ordered.length > 1;
     tile.className = 'tile' + (isMru ? ' mru' : '') + (isLru ? ' lru' : '');
-    if(!prevKeys.includes(k)) tile.classList.add('entering');
-    tile.innerHTML = `<div class="k">${escapeHtml(k)}</div><div class="pos">${isMru ? 'MRU' : isLru ? 'evict next' : '#'+(i+1)}</div>`;
+    if(!prevKeys.includes(key)) tile.classList.add('entering');
+    tile.dataset.key = key;
+
+    if(remaining_ttl !== null && remaining_ttl !== undefined){
+      ttlClock[key] = { remaining: remaining_ttl, fetchedAt: Date.now() };
+    }
+    const ttlLabel = remaining_ttl === null || remaining_ttl === undefined
+      ? '<span class="ttl none">no expiry</span>'
+      : `<span class="ttl">${formatTtl(remaining_ttl)}</span>`;
+
+    tile.innerHTML = `<div class="k">${escapeHtml(key)}</div><div class="pos">${isMru ? 'MRU' : isLru ? 'evict next' : '#'+(i+1)}</div>${ttlLabel}`;
     track.appendChild(tile);
   });
-  prevKeys = keys;
+  prevKeys = currentKeys;
+}
+
+function formatTtl(seconds){
+  if(seconds <= 0) return 'expiring…';
+  const rounded = Math.round(seconds * 10) / 10; // avoid "60.0s" at the minute boundary
+  if(rounded < 60) return rounded.toFixed(1) + 's';
+  const m = Math.floor(rounded / 60);
+  const s = Math.round(rounded % 60);
+  return `${m}m ${s}s`;
+}
+
+// runs frequently between polls so countdowns visibly tick down, not just jump every 1.5s
+function tickTtlDisplay(){
+  for(const key in ttlClock){
+    const { remaining, fetchedAt } = ttlClock[key];
+    const elapsed = (Date.now() - fetchedAt) / 1000;
+    const display = Math.max(0, remaining - elapsed);
+    const tile = document.querySelector(`.tile[data-key="${cssEscape(key)}"] .ttl`);
+    if(tile){
+      tile.textContent = formatTtl(display);
+      tile.classList.toggle('expiring', display <= 3);
+    }
+  }
+}
+
+function cssEscape(s){
+  return String(s).replace(/["\\]/g, '\\$&');
 }
 
 function escapeHtml(s){
@@ -322,6 +370,7 @@ $('btnClear').addEventListener('click', async () => {
 
 tick();
 setInterval(tick, 1500);
+setInterval(tickTtlDisplay, 250);
 </script>
 </body>
 </html>
