@@ -7,8 +7,8 @@ Run with:
 
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, status, Request
+from fastapi.responses import FileResponse, RedirectResponse
 import os
 from pydantic import BaseModel
 
@@ -38,7 +38,9 @@ class GetResponse(BaseModel):
     found: bool
 
 @app.get("/", tags=["System"])
-def root():
+def root(request: Request):
+    if "text/html" in request.headers.get("accept", ""):
+        return RedirectResponse(url="/dashboard")
     return {
         "service": "MiniRedis Cache API",
         "version": "1.0.0",
@@ -68,9 +70,13 @@ def stats():
 @app.get("/cache", tags=["System"])
 def list_keys():
     with cache.lock:
-        keys = [k for k, entry in cache.cache.items() if not entry.is_expired()]
-  # OrderedDict: index 0 = least recently used, -1 = most recently used
-    return {"keys": keys, "size": len(keys), "capacity": cache.capacity}
+        entries = []
+        for key, entry in cache.cache.items():
+            if not entry.is_expired():
+                remaining_ttl = entry.remaining_ttl()
+                entries.append({"key": key, "remaining_ttl": remaining_ttl})
+    # OrderedDict: index 0 = least recently used, -1 = most recently used
+        return {"keys": entries, "size": len(entries), "capacity": cache.capacity}
 
 
 @app.get("/cache/{key}", response_model=GetResponse)
