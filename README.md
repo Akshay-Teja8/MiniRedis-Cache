@@ -36,6 +36,8 @@ This project demonstrates the design and implementation of a production-inspired
 ├── requirements.txt
 ├── test_lru_cache.py
 └── README.md
+└── frontend/
+    └── index.html
 ```
 
 ---
@@ -85,6 +87,7 @@ This project demonstrates the design and implementation of a production-inspired
 | PUT | `/cache/{key}` | Insert/update a value |
 | DELETE | `/cache/{key}` | Delete a key |
 | DELETE | `/cache` | Clear cache |
+| GET | `/cache` | List all keys in recency order (used by dashboard) |
 
 Interactive API documentation is available at:
 
@@ -197,8 +200,26 @@ Load testing http://localhost:8000
 Completed successfully
 Latency statistics displayed
 ```
+---
+
+## Dashboard
+
+A live visual console showing the cache's actual recency order in real time.
+Keys slide toward "most recently used" on access, and the tile at risk of
+eviction is highlighted as the cache fills toward capacity.
+
+Start the server, then open:
+
+```
+http://localhost:8000/dashboard
+```
+
+Visiting the API root (`/`) in a browser will also redirect you straight to
+the dashboard. Programmatic clients (curl, requests, etc.) still get the
+plain JSON service info at `/`, unaffected.
 
 ---
+
 
 ## Design Decisions
 
