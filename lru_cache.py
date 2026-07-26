@@ -14,6 +14,12 @@ class Entry:
             return False
         return self.expires_at <= time.monotonic()
     
+    def remaining_ttl(self) -> Optional[float]:
+        if self.expires_at is None:
+            return None
+        remaining = self.expires_at - time.monotonic()
+        return max(0, remaining)
+    
 
 class LRUcache:
 
